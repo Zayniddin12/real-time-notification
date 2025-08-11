@@ -7,9 +7,10 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Shield, Users, Send, ArrowLeft, Loader2 } from "lucide-react"
+import { Shield, Users, Send, ArrowLeft, Loader2, LogOut, Trash2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { apiService } from "@/lib/api"
+import { AuthService } from "@/lib/auth"
 import type { User, NotificationRequest } from "@/types"
 
 export default function AdminPage() {
@@ -19,28 +20,46 @@ export default function AdminPage() {
   const [selectedUserId, setSelectedUserId] = useState<string>("")
   const [title, setTitle] = useState("")
   const [body, setBody] = useState("")
+  const [adminName, setAdminName] = useState("")
   const { toast } = useToast()
 
   useEffect(() => {
-    // Check if user is admin
-    const role = localStorage.getItem("userRole")
-    if (role !== "admin") {
-      window.location.href = "/"
+    initializePage()
+  }, [])
+
+  const initializePage = async () => {
+    try {
+      // Check authentication and admin role
+      await AuthService.requireRole("admin")
+
+      const userName = AuthService.getUserName()
+      setAdminName(userName || "Admin")
+
+      await fetchUsers()
+    } catch (error) {
+      // Will redirect automatically if not authenticated or not admin
       return
     }
-
-    fetchUsers()
-  }, [])
+  }
 
   const fetchUsers = async () => {
     try {
       setLoading(true)
       const response = await apiService.getAllUsers()
-      setUsers(response.data || [])
+      const users = response.data || []
+      setUsers(users)
+
+      if (users.length === 0) {
+        toast({
+          title: "No Users Found",
+          description: "No users are registered in the system yet.",
+        })
+      }
     } catch (error) {
+      console.error("Error fetching users:", error)
       toast({
         title: "Error",
-        description: "Failed to fetch users",
+        description: "Failed to fetch users from server.",
         variant: "destructive",
       })
     } finally {
@@ -64,6 +83,7 @@ export default function AdminPage() {
         title,
         body,
         userId: selectedUserId,
+        type: "admin_message",
       }
 
       await apiService.sendNotification(notification)
@@ -88,6 +108,38 @@ export default function AdminPage() {
     }
   }
 
+  const deleteUser = async (userId: number) => {
+    if (!confirm("Are you sure you want to delete this user?")) {
+      return
+    }
+
+    try {
+      await apiService.deleteUser(userId)
+      toast({
+        title: "Success",
+        description: "User deleted successfully",
+      })
+      await fetchUsers() // Refresh the list
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete user",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleLogout = async () => {
+    try {
+      await apiService.logout()
+    } catch (error) {
+      // Continue with logout even if API call fails
+    } finally {
+      AuthService.logout()
+      window.location.href = "/"
+    }
+  }
+
   const goBack = () => {
     window.location.href = "/"
   }
@@ -101,14 +153,22 @@ export default function AdminPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Shield className="h-6 w-6" />
-                <CardTitle>Admin Dashboard</CardTitle>
+                <div>
+                  <CardTitle>Admin Dashboard</CardTitle>
+                  <CardDescription>Welcome, {adminName}</CardDescription>
+                </div>
               </div>
-              <Button onClick={goBack} variant="outline" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Home
-              </Button>
+              <div className="flex gap-2">
+                <Button onClick={goBack} variant="outline" size="sm">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Home
+                </Button>
+                <Button onClick={handleLogout} variant="outline" size="sm">
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Logout
+                </Button>
+              </div>
             </div>
-            <CardDescription>Manage users and send notifications</CardDescription>
           </CardHeader>
         </Card>
 
@@ -116,10 +176,15 @@ export default function AdminPage() {
           {/* Users List */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5" />
-                Users ({users.length})
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  Users ({users.length})
+                </CardTitle>
+                <Button onClick={fetchUsers} variant="outline" size="sm">
+                  Refresh
+                </Button>
+              </div>
               <CardDescription>All registered users in the system</CardDescription>
             </CardHeader>
             <CardContent>
@@ -133,9 +198,16 @@ export default function AdminPage() {
                 <div className="space-y-3 max-h-96 overflow-y-auto">
                   {users.map((user) => (
                     <div key={user.id} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div>
-                        <p className="font-medium">{user.name || `User ${user.id}`}</p>
-                        <p className="text-sm text-gray-500">ID: {user.id}</p>
+                      <div className="flex-1">
+                        <p className="font-medium">{user.name || user.username || `User ${user.id}`}</p>
+                        <p className="text-sm text-gray-500">
+                          ID: {user.id} • {user.email}
+                        </p>
+                        {user.createdAt && (
+                          <p className="text-xs text-gray-400">
+                            Joined: {new Date(user.createdAt).toLocaleDateString()}
+                          </p>
+                        )}
                       </div>
                       <div className="flex items-center gap-2">
                         {user.firebaseToken && (
@@ -146,6 +218,16 @@ export default function AdminPage() {
                         <Badge variant="outline" className="text-xs">
                           {user.role || "user"}
                         </Badge>
+                        {user.role !== "admin" && (
+                          <Button
+                            onClick={() => deleteUser(user.id)}
+                            variant="outline"
+                            size="sm"
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -171,11 +253,13 @@ export default function AdminPage() {
                     <SelectValue placeholder="Choose a user..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {users.map((user) => (
-                      <SelectItem key={user.id} value={user.id.toString()}>
-                        {user.name || `User ${user.id}`} (ID: {user.id})
-                      </SelectItem>
-                    ))}
+                    {users
+                      .filter((user) => user.role !== "admin")
+                      .map((user) => (
+                        <SelectItem key={user.id} value={user.id.toString()}>
+                          {user.name || user.username || `User ${user.id}`} ({user.email})
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>

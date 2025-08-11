@@ -4,34 +4,26 @@ import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Bell, User, ArrowLeft, Wifi, WifiOff, BellRing } from "lucide-react"
+import { Bell, User, ArrowLeft, Wifi, WifiOff, BellRing, LogOut, Trash2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { websocketService } from "@/lib/websocket"
 import { fcmService } from "@/lib/fcm"
 import { apiService } from "@/lib/api"
+import { AuthService } from "@/lib/auth"
 import type { Notification } from "@/types"
 
 export default function UserPage() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [connected, setConnected] = useState(false)
   const [userId, setUserId] = useState<string>("")
+  const [userName, setUserName] = useState<string>("")
   const [pushEnabled, setPushEnabled] = useState(false)
   const [loading, setLoading] = useState(false)
   const { toast } = useToast()
   const wsRef = useRef<any>(null)
 
   useEffect(() => {
-    // Check if user is logged in as user
-    const role = localStorage.getItem("userRole")
-    const storedUserId = localStorage.getItem("userId")
-
-    if (role !== "user" || !storedUserId) {
-      window.location.href = "/"
-      return
-    }
-
-    setUserId(storedUserId)
-    initializeServices(storedUserId)
+    initializePage()
 
     return () => {
       if (wsRef.current) {
@@ -40,7 +32,42 @@ export default function UserPage() {
     }
   }, [])
 
+  const initializePage = async () => {
+    try {
+      // Check authentication
+      await AuthService.requireAuth()
+
+      const storedUserId = AuthService.getUserId()
+      const storedUserName = AuthService.getUserName()
+
+      if (!storedUserId) {
+        window.location.href = "/auth/login"
+        return
+      }
+
+      setUserId(storedUserId.toString())
+      setUserName(storedUserName || "User")
+
+      await loadNotifications(storedUserId)
+      await initializeServices(storedUserId.toString())
+    } catch (error) {
+      // Will redirect automatically if not authenticated
+      return
+    }
+  }
+
+  const loadNotifications = async (userId: number) => {
+    try {
+      const response = await apiService.getNotifications(userId)
+      setNotifications(response.data || [])
+    } catch (error) {
+      console.error("Error loading notifications:", error)
+    }
+  }
+
   const initializeServices = async (userId: string) => {
+    const numericUserId = Number.parseInt(userId)
+
     // Initialize WebSocket
     wsRef.current = websocketService.connect(userId, {
       onConnect: () => {
@@ -84,7 +111,11 @@ export default function UserPage() {
       if (permission === "granted") {
         const token = await fcmService.getToken()
         if (token) {
-          await apiService.setFirebaseToken(token, Number.parseInt(userId.replace("user_", "")))
+          await apiService.setFirebaseToken(token, numericUserId)
+          toast({
+            title: "Push Notifications",
+            description: "Push notifications enabled successfully",
+          })
         }
       }
     } catch (error) {
@@ -100,7 +131,7 @@ export default function UserPage() {
       if (permission === "granted") {
         const token = await fcmService.getToken()
         if (token) {
-          await apiService.setFirebaseToken(token, Number.parseInt(userId.replace("user_", "")))
+          await apiService.setFirebaseToken(token, Number.parseInt(userId))
           setPushEnabled(true)
           toast({
             title: "Success",
@@ -122,6 +153,36 @@ export default function UserPage() {
       })
     } finally {
       setLoading(false)
+    }
+  }
+
+  const markAsRead = async (notificationId: string) => {
+    try {
+      await apiService.markNotificationAsRead(notificationId)
+      setNotifications((prev) =>
+        prev.map((notif) => (notif.id === notificationId ? { ...notif, isRead: true } : notif)),
+      )
+    } catch (error) {
+      console.error("Error marking notification as read:", error)
+    }
+  }
+
+  const clearNotifications = () => {
+    setNotifications([])
+    toast({
+      title: "Cleared",
+      description: "All notifications cleared",
+    })
+  }
+
+  const handleLogout = async () => {
+    try {
+      await apiService.logout()
+    } catch (error) {
+      // Continue with logout even if API call fails
+    } finally {
+      AuthService.logout()
+      window.location.href = "/"
     }
   }
 
@@ -148,13 +209,21 @@ export default function UserPage() {
                 <User className="h-6 w-6" />
                 <div>
                   <CardTitle>User Dashboard</CardTitle>
-                  <CardDescription>User ID: {userId}</CardDescription>
+                  <CardDescription>
+                    Welcome, {userName} (ID: {userId})
+                  </CardDescription>
                 </div>
               </div>
-              <Button onClick={goBack} variant="outline" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Home
-              </Button>
+              <div className="flex gap-2">
+                <Button onClick={goBack} variant="outline" size="sm">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Home
+                </Button>
+                <Button onClick={handleLogout} variant="outline" size="sm">
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Logout
+                </Button>
+              </div>
             </div>
           </CardHeader>
         </Card>
@@ -197,11 +266,19 @@ export default function UserPage() {
         {/* Notifications */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Bell className="h-5 w-5" />
-              Notifications ({notifications.length})
-            </CardTitle>
-            <CardDescription>Real-time notifications will appear here</CardDescription>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Bell className="h-5 w-5" />
+                Notifications ({notifications.length})
+              </CardTitle>
+              {notifications.length > 0 && (
+                <Button onClick={clearNotifications} variant="outline" size="sm">
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Clear All
+                </Button>
+              )}
+            </div>
+            <CardDescription>Your notifications will appear here</CardDescription>
           </CardHeader>
           <CardContent>
             {notifications.length === 0 ? (
@@ -213,16 +290,31 @@ export default function UserPage() {
             ) : (
               <div className="space-y-3 max-h-96 overflow-y-auto">
                 {notifications.map((notification) => (
-                  <div key={notification.id} className="p-4 border rounded-lg bg-white shadow-sm">
+                  <div
+                    key={notification.id}
+                    className={`p-4 border rounded-lg shadow-sm cursor-pointer transition-colors ${
+                      notification.isRead ? "bg-gray-50" : "bg-white border-blue-200"
+                    }`}
+                    onClick={() => !notification.isRead && markAsRead(notification.id)}
+                  >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <h4 className="font-medium text-gray-900">{notification.title}</h4>
                         <p className="text-gray-600 mt-1">{notification.body}</p>
                         <p className="text-xs text-gray-400 mt-2">{formatTime(notification.createdAt)}</p>
                       </div>
-                      <Badge variant="secondary" className="ml-2">
-                        New
-                      </Badge>
+                      <div className="flex items-center gap-2 ml-2">
+                        {notification.type && (
+                          <Badge variant="outline" className="text-xs">
+                            {notification.type}
+                          </Badge>
+                        )}
+                        {!notification.isRead && (
+                          <Badge variant="secondary" className="text-xs">
+                            New
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
