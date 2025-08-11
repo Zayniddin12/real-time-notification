@@ -1,9 +1,11 @@
 export interface User {
   id: number
-  name?: string
-  email?: string
   username?: string
-  role?: string
+  email?: string
+  phone?: string
+  firstname?: string
+  lastname?: string
+  role: "USER" | "ADMIN"
   firebaseToken?: string
   createdAt?: string
   updatedAt?: string
@@ -15,36 +17,48 @@ export interface Notification {
   userId: string
   title: string
   body: string
+  type: "GENERAL" | "AUCTION" | "BID" | "SYSTEM"
   createdAt: string
   isRead?: boolean
-  type?: string
 }
 
 export interface NotificationRequest {
   title: string
   body: string
   userId: string
-  type?: string
+  type?: "GENERAL" | "AUCTION" | "BID" | "SYSTEM"
 }
 
 export interface LoginRequest {
-  email?: string
   username?: string
+  email?: string
+  phone?: string
   password: string
 }
 
-export interface RegisterRequest {
-  name: string
+export interface RegisterByEmailRequest {
   email: string
-  username: string
+  phone: string
   password: string
-  role?: string
+  firstname: string
+  lastname: string
+  deviceId: string
+}
+
+export interface RegisterByPhoneRequest {
+  phone: string
+  password: string
+  deviceId: string
 }
 
 export interface AuthResponse {
-  token: string
-  user: User
+  accessToken?: string
+  token?: string
+  refreshToken?: string
+  tokenType?: string
   expiresIn?: number
+  user?: User
+  message?: string
 }
 
 export interface Auction {
@@ -53,11 +67,14 @@ export interface Auction {
   description: string
   startingPrice: number
   currentPrice: number
+  startTime: string
   endTime: string
-  status: string
+  status: "PENDING" | "ACTIVE" | "ENDED" | "CANCELLED"
   createdBy: number
   createdAt: string
   updatedAt: string
+  imageUrl?: string
+  category?: string
 }
 
 export interface Bid {
@@ -66,4 +83,5 @@ export interface Bid {
   userId: number
   amount: number
   createdAt: string
+  user?: User
 }

@@ -1,5 +1,7 @@
 "use client"
 
+import { Label } from "@/components/ui/label"
+
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -7,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Shield, Users, Send, ArrowLeft, Loader2, LogOut, Trash2 } from "lucide-react"
+import { Shield, Users, Send, ArrowLeft, Loader2, LogOut, Trash2, RefreshCw } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { apiService } from "@/lib/api"
 import { AuthService } from "@/lib/auth"
@@ -20,6 +22,7 @@ export default function AdminPage() {
   const [selectedUserId, setSelectedUserId] = useState<string>("")
   const [title, setTitle] = useState("")
   const [body, setBody] = useState("")
+  const [notificationType, setNotificationType] = useState<"GENERAL" | "AUCTION" | "BID" | "SYSTEM">("GENERAL")
   const [adminName, setAdminName] = useState("")
   const { toast } = useToast()
 
@@ -30,7 +33,7 @@ export default function AdminPage() {
   const initializePage = async () => {
     try {
       // Check authentication and admin role
-      await AuthService.requireRole("admin")
+      await AuthService.requireRole("ADMIN")
 
       const userName = AuthService.getUserName()
       setAdminName(userName || "Admin")
@@ -45,8 +48,7 @@ export default function AdminPage() {
   const fetchUsers = async () => {
     try {
       setLoading(true)
-      const response = await apiService.getAllUsers()
-      const users = response.data || []
+      const users = await apiService.getAllUsers()
       setUsers(users)
 
       if (users.length === 0) {
@@ -55,11 +57,11 @@ export default function AdminPage() {
           description: "No users are registered in the system yet.",
         })
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching users:", error)
       toast({
         title: "Error",
-        description: "Failed to fetch users from server.",
+        description: error.message || "Failed to fetch users from server.",
         variant: "destructive",
       })
     } finally {
@@ -83,7 +85,7 @@ export default function AdminPage() {
         title,
         body,
         userId: selectedUserId,
-        type: "admin_message",
+        type: notificationType,
       }
 
       await apiService.sendNotification(notification)
@@ -97,10 +99,11 @@ export default function AdminPage() {
       setTitle("")
       setBody("")
       setSelectedUserId("")
-    } catch (error) {
+      setNotificationType("GENERAL")
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "Failed to send notification",
+        description: error.message || "Failed to send notification",
         variant: "destructive",
       })
     } finally {
@@ -120,10 +123,10 @@ export default function AdminPage() {
         description: "User deleted successfully",
       })
       await fetchUsers() // Refresh the list
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "Failed to delete user",
+        description: error.message || "Failed to delete user",
         variant: "destructive",
       })
     }
@@ -181,7 +184,8 @@ export default function AdminPage() {
                   <Users className="h-5 w-5" />
                   Users ({users.length})
                 </CardTitle>
-                <Button onClick={fetchUsers} variant="outline" size="sm">
+                <Button onClick={fetchUsers} variant="outline" size="sm" disabled={loading}>
+                  <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
                   Refresh
                 </Button>
               </div>
@@ -193,16 +197,21 @@ export default function AdminPage() {
                   <Loader2 className="h-6 w-6 animate-spin" />
                 </div>
               ) : users.length === 0 ? (
-                <p className="text-center text-gray-500 py-8">No users found</p>
+                <div className="text-center py-8">
+                  <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                  <p className="text-gray-500">No users found</p>
+                  <p className="text-sm text-gray-400 mt-2">Users will appear here after registration</p>
+                </div>
               ) : (
-                <div className="space-y-3 max-h-96 overflow-y-auto">
+                <div className="space-y-3 max-h-96 overflow-y-auto custom-scrollbar">
                   {users.map((user) => (
-                    <div key={user.id} className="flex items-center justify-between p-3 border rounded-lg">
+                    <div key={user.id} className="flex items-center justify-between p-3 border rounded-lg bg-white">
                       <div className="flex-1">
-                        <p className="font-medium">{user.name || user.username || `User ${user.id}`}</p>
-                        <p className="text-sm text-gray-500">
-                          ID: {user.id} • {user.email}
+                        <p className="font-medium">
+                          {user.firstName} {user.lastName}
                         </p>
+                        <p className="text-sm text-gray-500">@{user.username}</p>
+                        <p className="text-sm text-gray-500">{user.email}</p>
                         {user.createdAt && (
                           <p className="text-xs text-gray-400">
                             Joined: {new Date(user.createdAt).toLocaleDateString()}
@@ -215,15 +224,15 @@ export default function AdminPage() {
                             FCM
                           </Badge>
                         )}
-                        <Badge variant="outline" className="text-xs">
-                          {user.role || "user"}
+                        <Badge variant={user.role === "ADMIN" ? "default" : "outline"} className="text-xs">
+                          {user.role}
                         </Badge>
-                        {user.role !== "admin" && (
+                        {user.role !== "ADMIN" && (
                           <Button
                             onClick={() => deleteUser(user.id)}
                             variant="outline"
                             size="sm"
-                            className="text-red-600 hover:text-red-700"
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
                           >
                             <Trash2 className="h-3 w-3" />
                           </Button>
@@ -247,17 +256,17 @@ export default function AdminPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <label className="text-sm font-medium mb-2 block">Select User</label>
+                <Label className="text-sm font-medium mb-2 block">Select User</Label>
                 <Select value={selectedUserId} onValueChange={setSelectedUserId}>
                   <SelectTrigger>
                     <SelectValue placeholder="Choose a user..." />
                   </SelectTrigger>
                   <SelectContent>
                     {users
-                      .filter((user) => user.role !== "admin")
+                      .filter((user) => user.role !== "ADMIN")
                       .map((user) => (
                         <SelectItem key={user.id} value={user.id.toString()}>
-                          {user.name || user.username || `User ${user.id}`} ({user.email})
+                          {user.firstName} {user.lastName} (@{user.username})
                         </SelectItem>
                       ))}
                   </SelectContent>
@@ -265,7 +274,25 @@ export default function AdminPage() {
               </div>
 
               <div>
-                <label className="text-sm font-medium mb-2 block">Title</label>
+                <Label className="text-sm font-medium mb-2 block">Notification Type</Label>
+                <Select
+                  value={notificationType}
+                  onValueChange={(value: "GENERAL" | "AUCTION" | "BID" | "SYSTEM") => setNotificationType(value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="GENERAL">General</SelectItem>
+                    <SelectItem value="AUCTION">Auction</SelectItem>
+                    <SelectItem value="BID">Bid</SelectItem>
+                    <SelectItem value="SYSTEM">System</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium mb-2 block">Title</Label>
                 <Input
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
@@ -274,7 +301,7 @@ export default function AdminPage() {
               </div>
 
               <div>
-                <label className="text-sm font-medium mb-2 block">Message</label>
+                <Label className="text-sm font-medium mb-2 block">Message</Label>
                 <Textarea
                   value={body}
                   onChange={(e) => setBody(e.target.value)}

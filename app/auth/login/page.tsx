@@ -1,74 +1,115 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
 import { apiService } from "@/lib/api"
-import { LogIn, Mail, Lock } from "lucide-react"
+import { LogIn, Mail, Phone, Lock, Eye, EyeOff, User } from "lucide-react"
 import Link from "next/link"
 
 export default function LoginPage() {
-  const [formData, setFormData] = useState({
+  const [emailFormData, setEmailFormData] = useState({
     email: "",
     password: "",
   })
+
+  const [phoneFormData, setPhoneFormData] = useState({
+    phone: "",
+    password: "",
+  })
+
+  const [usernameFormData, setUsernameFormData] = useState({
+    username: "",
+    password: "",
+  })
+
   const [loading, setLoading] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [activeTab, setActiveTab] = useState("email")
   const { toast } = useToast()
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent, type: "email" | "phone" | "username") => {
     e.preventDefault()
 
-    if (!formData.email || !formData.password) {
-      toast({
-        title: "Validation Error",
-        description: "Please fill in all fields",
-        variant: "destructive",
-      })
-      return
+    let credentials: any = {}
+
+    if (type === "email") {
+      if (!emailFormData.email || !emailFormData.password) {
+        toast({
+          title: "Validation Error",
+          description: "Please fill in all fields",
+          variant: "destructive",
+        })
+        return
+      }
+      credentials = { email: emailFormData.email, password: emailFormData.password }
+    } else if (type === "phone") {
+      if (!phoneFormData.phone || !phoneFormData.password) {
+        toast({
+          title: "Validation Error",
+          description: "Please fill in all fields",
+          variant: "destructive",
+        })
+        return
+      }
+      credentials = { phone: phoneFormData.phone, password: phoneFormData.password }
+    } else {
+      if (!usernameFormData.username || !usernameFormData.password) {
+        toast({
+          title: "Validation Error",
+          description: "Please fill in all fields",
+          variant: "destructive",
+        })
+        return
+      }
+      credentials = { username: usernameFormData.username, password: usernameFormData.password }
     }
 
     try {
       setLoading(true)
-      const response = await apiService.login({
-        email: formData.email,
-        password: formData.password,
-      })
+      const response = await apiService.login(credentials)
 
       // Store authentication data
-      localStorage.setItem("authToken", response.token)
-      localStorage.setItem("userId", response.user.id.toString())
-      localStorage.setItem("userRole", response.user.role || "user")
-      localStorage.setItem("userName", response.user.name || response.user.username || "")
+      const token = response.accessToken || response.token
+      if (token) {
+        localStorage.setItem("authToken", token)
+        if (response.refreshToken) {
+          localStorage.setItem("refreshToken", response.refreshToken)
+        }
+        if (response.user) {
+          localStorage.setItem("userId", response.user.id.toString())
+          localStorage.setItem("userRole", response.user.role || "USER")
+          const userName =
+            response.user.firstname && response.user.lastname
+              ? `${response.user.firstname} ${response.user.lastname}`
+              : response.user.email || response.user.phone || "User"
+          localStorage.setItem("userName", userName)
+        }
+      }
 
       toast({
         title: "Login Successful",
-        description: `Welcome back, ${response.user.name || response.user.username}!`,
+        description: "Welcome back!",
       })
 
       // Redirect based on role
-      const redirectPath = response.user.role === "admin" ? "/admin" : "/user"
+      const userRole = response.user?.role || "USER"
+      const redirectPath = userRole === "ADMIN" ? "/admin" : "/user"
       window.location.href = redirectPath
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: "Login Failed",
-        description: "Invalid credentials. Please try again.",
+        description: error.message || "Invalid credentials. Please try again.",
         variant: "destructive",
       })
     } finally {
       setLoading(false)
     }
-  }
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData((prev) => ({
-      ...prev,
-      [e.target.name]: e.target.value,
-    }))
   }
 
   return (
@@ -77,56 +118,180 @@ export default function LoginPage() {
         <CardHeader className="text-center">
           <CardTitle className="flex items-center justify-center gap-2">
             <LogIn className="h-6 w-6" />
-            Login
+            Welcome Back
           </CardTitle>
           <CardDescription>Sign in to your account</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  placeholder="Enter your email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  className="pl-10"
-                  required
-                />
-              </div>
-            </div>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="email" className="flex items-center gap-1 text-xs">
+                <Mail className="h-3 w-3" />
+                Email
+              </TabsTrigger>
+              <TabsTrigger value="phone" className="flex items-center gap-1 text-xs">
+                <Phone className="h-3 w-3" />
+                Phone
+              </TabsTrigger>
+              <TabsTrigger value="username" className="flex items-center gap-1 text-xs">
+                <User className="h-3 w-3" />
+                Username
+              </TabsTrigger>
+            </TabsList>
 
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
-                  id="password"
-                  name="password"
-                  type="password"
-                  placeholder="Enter your password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  className="pl-10"
-                  required
-                />
-              </div>
-            </div>
+            <TabsContent value="email" className="space-y-4 mt-6">
+              <form onSubmit={(e) => handleSubmit(e, "email")} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Input
+                      id="email"
+                      name="email"
+                      type="email"
+                      placeholder="Enter your email"
+                      value={emailFormData.email}
+                      onChange={(e) => setEmailFormData((prev) => ({ ...prev, email: e.target.value }))}
+                      className="pl-10"
+                      required
+                    />
+                  </div>
+                </div>
 
-            <Button type="submit" disabled={loading} className="w-full">
-              {loading ? "Signing in..." : "Sign In"}
-            </Button>
-          </form>
+                <div className="space-y-2">
+                  <Label htmlFor="emailPassword">Password</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Input
+                      id="emailPassword"
+                      name="password"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Enter your password"
+                      value={emailFormData.password}
+                      onChange={(e) => setEmailFormData((prev) => ({ ...prev, password: e.target.value }))}
+                      className="pl-10 pr-10"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <Button type="submit" disabled={loading} className="w-full">
+                  {loading ? "Signing in..." : "Sign In with Email"}
+                </Button>
+              </form>
+            </TabsContent>
+
+            <TabsContent value="phone" className="space-y-4 mt-6">
+              <form onSubmit={(e) => handleSubmit(e, "phone")} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone Number</Label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Input
+                      id="phone"
+                      name="phone"
+                      type="tel"
+                      placeholder="+998901234567"
+                      value={phoneFormData.phone}
+                      onChange={(e) => setPhoneFormData((prev) => ({ ...prev, phone: e.target.value }))}
+                      className="pl-10"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="phonePassword">Password</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Input
+                      id="phonePassword"
+                      name="password"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Enter your password"
+                      value={phoneFormData.password}
+                      onChange={(e) => setPhoneFormData((prev) => ({ ...prev, password: e.target.value }))}
+                      className="pl-10 pr-10"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <Button type="submit" disabled={loading} className="w-full">
+                  {loading ? "Signing in..." : "Sign In with Phone"}
+                </Button>
+              </form>
+            </TabsContent>
+
+            <TabsContent value="username" className="space-y-4 mt-6">
+              <form onSubmit={(e) => handleSubmit(e, "username")} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="username">Username</Label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Input
+                      id="username"
+                      name="username"
+                      type="text"
+                      placeholder="Enter your username"
+                      value={usernameFormData.username}
+                      onChange={(e) => setUsernameFormData((prev) => ({ ...prev, username: e.target.value }))}
+                      className="pl-10"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="usernamePassword">Password</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Input
+                      id="usernamePassword"
+                      name="password"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Enter your password"
+                      value={usernameFormData.password}
+                      onChange={(e) => setUsernameFormData((prev) => ({ ...prev, password: e.target.value }))}
+                      className="pl-10 pr-10"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <Button type="submit" disabled={loading} className="w-full">
+                  {loading ? "Signing in..." : "Sign In with Username"}
+                </Button>
+              </form>
+            </TabsContent>
+          </Tabs>
 
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600">
               Don't have an account?{" "}
               <Link href="/auth/register" className="text-blue-600 hover:underline">
-                Sign up
+                Create account
               </Link>
             </p>
           </div>

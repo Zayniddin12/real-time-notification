@@ -9,6 +9,10 @@ export class AuthService {
     return localStorage.getItem("authToken")
   }
 
+  static getRefreshToken(): string | null {
+    return localStorage.getItem("refreshToken")
+  }
+
   static getUserId(): number | null {
     const userId = localStorage.getItem("userId")
     return userId ? Number.parseInt(userId) : null
@@ -32,7 +36,19 @@ export class AuthService {
       // Verify token is still valid
       await apiService.getCurrentUser()
     } catch (error) {
-      // Token is invalid, redirect to login
+      // Try to refresh token
+      try {
+        const refreshToken = this.getRefreshToken()
+        if (refreshToken) {
+          const response = await apiService.refreshToken()
+          localStorage.setItem("authToken", response.accessToken)
+          return
+        }
+      } catch (refreshError) {
+        // Refresh failed, redirect to login
+      }
+
+      // Token is invalid and refresh failed, redirect to login
       this.logout()
       window.location.href = "/auth/login"
       throw new Error("Authentication expired")
@@ -51,6 +67,7 @@ export class AuthService {
 
   static logout(): void {
     localStorage.removeItem("authToken")
+    localStorage.removeItem("refreshToken")
     localStorage.removeItem("userId")
     localStorage.removeItem("userRole")
     localStorage.removeItem("userName")

@@ -1,43 +1,88 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
 import { apiService } from "@/lib/api"
-import { UserPlus, User, Mail, Lock } from "lucide-react"
+import { UserPlus, Mail, Phone, Lock, Eye, EyeOff } from "lucide-react"
 import Link from "next/link"
 
 export default function RegisterPage() {
-  const [formData, setFormData] = useState({
-    name: "",
+  const [emailFormData, setEmailFormData] = useState({
     email: "",
-    username: "",
+    phone: "",
+    firstname: "",
+    lastname: "",
     password: "",
     confirmPassword: "",
-    role: "user",
   })
+
+  const [phoneFormData, setPhoneFormData] = useState({
+    phone: "",
+    password: "",
+    confirmPassword: "",
+  })
+
   const [loading, setLoading] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [activeTab, setActiveTab] = useState("email")
   const { toast } = useToast()
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    return emailRegex.test(email)
+  }
+
+  const validatePhone = (phone: string) => {
+    // Basic phone validation - adjust regex based on your requirements
+    const phoneRegex = /^\+?[1-9]\d{1,14}$/
+    return phoneRegex.test(phone.replace(/\s/g, ""))
+  }
+
+  const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!formData.name || !formData.email || !formData.username || !formData.password) {
+    // Validation
+    if (
+      !emailFormData.email ||
+      !emailFormData.phone ||
+      !emailFormData.firstname ||
+      !emailFormData.lastname ||
+      !emailFormData.password
+    ) {
       toast({
         title: "Validation Error",
-        description: "Please fill in all fields",
+        description: "Please fill in all required fields",
         variant: "destructive",
       })
       return
     }
 
-    if (formData.password !== formData.confirmPassword) {
+    if (!validateEmail(emailFormData.email)) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter a valid email address",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!validatePhone(emailFormData.phone)) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter a valid phone number (e.g., +998901234567)",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (emailFormData.password !== emailFormData.confirmPassword) {
       toast({
         title: "Validation Error",
         description: "Passwords do not match",
@@ -46,7 +91,7 @@ export default function RegisterPage() {
       return
     }
 
-    if (formData.password.length < 6) {
+    if (emailFormData.password.length < 6) {
       toast({
         title: "Validation Error",
         description: "Password must be at least 6 characters long",
@@ -57,32 +102,40 @@ export default function RegisterPage() {
 
     try {
       setLoading(true)
-      const response = await apiService.register({
-        name: formData.name,
-        email: formData.email,
-        username: formData.username,
-        password: formData.password,
-        role: formData.role,
+      const response = await apiService.registerByEmail({
+        email: emailFormData.email,
+        phone: emailFormData.phone,
+        firstname: emailFormData.firstname,
+        lastname: emailFormData.lastname,
+        password: emailFormData.password,
+        deviceId: `web_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       })
 
       // Store authentication data
-      localStorage.setItem("authToken", response.token)
-      localStorage.setItem("userId", response.user.id.toString())
-      localStorage.setItem("userRole", response.user.role || "user")
-      localStorage.setItem("userName", response.user.name || response.user.username || "")
+      const token = response.accessToken || response.token
+      if (token) {
+        localStorage.setItem("authToken", token)
+        if (response.refreshToken) {
+          localStorage.setItem("refreshToken", response.refreshToken)
+        }
+        if (response.user) {
+          localStorage.setItem("userId", response.user.id.toString())
+          localStorage.setItem("userRole", response.user.role || "USER")
+          localStorage.setItem("userName", `${response.user.firstname} ${response.user.lastname}`)
+        }
+      }
 
       toast({
         title: "Registration Successful",
-        description: `Welcome, ${response.user.name}!`,
+        description: `Welcome, ${emailFormData.firstname}!`,
       })
 
-      // Redirect based on role
-      const redirectPath = response.user.role === "admin" ? "/admin" : "/user"
-      window.location.href = redirectPath
-    } catch (error) {
+      // Redirect to user dashboard (most registrations will be users)
+      window.location.href = "/user"
+    } catch (error: any) {
       toast({
         title: "Registration Failed",
-        description: "Failed to create account. Please try again.",
+        description: error.message || "Failed to create account. Please try again.",
         variant: "destructive",
       })
     } finally {
@@ -90,8 +143,95 @@ export default function RegisterPage() {
     }
   }
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData((prev) => ({
+  const handlePhoneSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    // Validation
+    if (!phoneFormData.phone || !phoneFormData.password) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!validatePhone(phoneFormData.phone)) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter a valid phone number (e.g., +998901234567)",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (phoneFormData.password !== phoneFormData.confirmPassword) {
+      toast({
+        title: "Validation Error",
+        description: "Passwords do not match",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (phoneFormData.password.length < 6) {
+      toast({
+        title: "Validation Error",
+        description: "Password must be at least 6 characters long",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setLoading(true)
+      const response = await apiService.registerByPhone({
+        phone: phoneFormData.phone,
+        password: phoneFormData.password,
+        deviceId: `web_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      })
+
+      // Store authentication data
+      const token = response.accessToken || response.token
+      if (token) {
+        localStorage.setItem("authToken", token)
+        if (response.refreshToken) {
+          localStorage.setItem("refreshToken", response.refreshToken)
+        }
+        if (response.user) {
+          localStorage.setItem("userId", response.user.id.toString())
+          localStorage.setItem("userRole", response.user.role || "USER")
+          localStorage.setItem("userName", response.user.phone || "User")
+        }
+      }
+
+      toast({
+        title: "Registration Successful",
+        description: "Account created successfully!",
+      })
+
+      // Redirect to user dashboard
+      window.location.href = "/user"
+    } catch (error: any) {
+      toast({
+        title: "Registration Failed",
+        description: error.message || "Failed to create account. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setEmailFormData((prev) => ({
+      ...prev,
+      [e.target.name]: e.target.value,
+    }))
+  }
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPhoneFormData((prev) => ({
       ...prev,
       [e.target.name]: e.target.value,
     }))
@@ -103,117 +243,216 @@ export default function RegisterPage() {
         <CardHeader className="text-center">
           <CardTitle className="flex items-center justify-center gap-2">
             <UserPlus className="h-6 w-6" />
-            Register
+            Create Account
           </CardTitle>
-          <CardDescription>Create your account</CardDescription>
+          <CardDescription>Choose your registration method</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Full Name</Label>
-              <div className="relative">
-                <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
-                  id="name"
-                  name="name"
-                  type="text"
-                  placeholder="Enter your full name"
-                  value={formData.name}
-                  onChange={handleChange}
-                  className="pl-10"
-                  required
-                />
-              </div>
-            </div>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="email" className="flex items-center gap-2">
+                <Mail className="h-4 w-4" />
+                Email
+              </TabsTrigger>
+              <TabsTrigger value="phone" className="flex items-center gap-2">
+                <Phone className="h-4 w-4" />
+                Phone
+              </TabsTrigger>
+            </TabsList>
 
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  placeholder="Enter your email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  className="pl-10"
-                  required
-                />
-              </div>
-            </div>
+            <TabsContent value="email" className="space-y-4 mt-6">
+              <form onSubmit={handleEmailSubmit} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="firstname">First Name *</Label>
+                    <Input
+                      id="firstname"
+                      name="firstname"
+                      type="text"
+                      placeholder="John"
+                      value={emailFormData.firstname}
+                      onChange={handleEmailChange}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="lastname">Last Name *</Label>
+                    <Input
+                      id="lastname"
+                      name="lastname"
+                      type="text"
+                      placeholder="Doe"
+                      value={emailFormData.lastname}
+                      onChange={handleEmailChange}
+                      required
+                    />
+                  </div>
+                </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
-              <div className="relative">
-                <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
-                  id="username"
-                  name="username"
-                  type="text"
-                  placeholder="Choose a username"
-                  value={formData.username}
-                  onChange={handleChange}
-                  className="pl-10"
-                  required
-                />
-              </div>
-            </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email *</Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Input
+                      id="email"
+                      name="email"
+                      type="email"
+                      placeholder="john@example.com"
+                      value={emailFormData.email}
+                      onChange={handleEmailChange}
+                      className="pl-10"
+                      required
+                    />
+                  </div>
+                </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="role">Role</Label>
-              <Select
-                value={formData.role}
-                onValueChange={(value) => setFormData((prev) => ({ ...prev, role: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select your role" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="user">User</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone Number *</Label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Input
+                      id="phone"
+                      name="phone"
+                      type="tel"
+                      placeholder="+998901234567"
+                      value={emailFormData.phone}
+                      onChange={handleEmailChange}
+                      className="pl-10"
+                      required
+                    />
+                  </div>
+                </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
-                  id="password"
-                  name="password"
-                  type="password"
-                  placeholder="Enter your password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  className="pl-10"
-                  required
-                />
-              </div>
-            </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password *</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Input
+                      id="password"
+                      name="password"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Enter your password"
+                      value={emailFormData.password}
+                      onChange={handleEmailChange}
+                      className="pl-10 pr-10"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm Password</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type="password"
-                  placeholder="Confirm your password"
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                  className="pl-10"
-                  required
-                />
-              </div>
-            </div>
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPassword">Confirm Password *</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Input
+                      id="confirmPassword"
+                      name="confirmPassword"
+                      type={showConfirmPassword ? "text" : "password"}
+                      placeholder="Confirm your password"
+                      value={emailFormData.confirmPassword}
+                      onChange={handleEmailChange}
+                      className="pl-10 pr-10"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                    >
+                      {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
 
-            <Button type="submit" disabled={loading} className="w-full">
-              {loading ? "Creating Account..." : "Create Account"}
-            </Button>
-          </form>
+                <Button type="submit" disabled={loading} className="w-full">
+                  {loading ? "Creating Account..." : "Create Account with Email"}
+                </Button>
+              </form>
+            </TabsContent>
+
+            <TabsContent value="phone" className="space-y-4 mt-6">
+              <form onSubmit={handlePhoneSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="phoneOnly">Phone Number *</Label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Input
+                      id="phoneOnly"
+                      name="phone"
+                      type="tel"
+                      placeholder="+998901234567"
+                      value={phoneFormData.phone}
+                      onChange={handlePhoneChange}
+                      className="pl-10"
+                      required
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Enter your phone number with country code (e.g., +998901234567)
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="phonePassword">Password *</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Input
+                      id="phonePassword"
+                      name="password"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Enter your password"
+                      value={phoneFormData.password}
+                      onChange={handlePhoneChange}
+                      className="pl-10 pr-10"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="phoneConfirmPassword">Confirm Password *</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Input
+                      id="phoneConfirmPassword"
+                      name="confirmPassword"
+                      type={showConfirmPassword ? "text" : "password"}
+                      placeholder="Confirm your password"
+                      value={phoneFormData.confirmPassword}
+                      onChange={handlePhoneChange}
+                      className="pl-10 pr-10"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                    >
+                      {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <Button type="submit" disabled={loading} className="w-full">
+                  {loading ? "Creating Account..." : "Create Account with Phone"}
+                </Button>
+              </form>
+            </TabsContent>
+          </Tabs>
 
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600">

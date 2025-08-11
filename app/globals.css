@@ -1,8 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
-
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -75,6 +73,7 @@
 }
 
 @theme inline {
+  /* optional: --font-sans, --font-serif, --font-mono if they are applied in the layout.tsx */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -119,75 +118,29 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
 
-/* Additional utility classes for better styling */
-@layer utilities {
-  .animate-spin {
-    animation: spin 1s linear infinite;
+/* Custom animations */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
   }
-
-  @keyframes spin {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
-  .shadow-xs {
-    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  }
-
-  .field-sizing-content {
-    field-sizing: content;
+  to {
+    transform: rotate(360deg);
   }
 }
 
-/* Custom scrollbar styles */
-.overflow-y-auto::-webkit-scrollbar {
-  width: 6px;
+.animate-spin {
+  animation: spin 1s linear infinite;
 }
 
-.overflow-y-auto::-webkit-scrollbar-track {
-  background: transparent;
+/* Loading states */
+.loading-skeleton {
+  @apply animate-pulse bg-gray-200 rounded;
 }
 
-.overflow-y-auto::-webkit-scrollbar-thumb {
-  background: rgb(203 213 225);
-  border-radius: 3px;
-}
-
-.overflow-y-auto::-webkit-scrollbar-thumb:hover {
-  background: rgb(148 163 184);
-}
-
-/* Focus styles for better accessibility */
-.focus-visible\:ring-ring\/50:focus-visible {
-  outline: 2px solid transparent;
-  outline-offset: 2px;
-  box-shadow: 0 0 0 3px rgb(var(--ring) / 0.5);
-}
-
-/* Loading animation */
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-}
-
-.animate-pulse {
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-/* Notification animation */
+/* Notification animations */
 @keyframes slideInFromTop {
   from {
     transform: translateY(-100%);
@@ -199,37 +152,24 @@
   }
 }
 
-.animate-slide-in {
+.notification-enter {
   animation: slideInFromTop 0.3s ease-out;
 }
 
-/* Card hover effects */
-.card-hover {
-  transition: all 0.2s ease-in-out;
+/* Custom scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
 }
 
-.card-hover:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px 0 rgb(0 0 0 / 0.1);
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-/* Button loading state */
-.btn-loading {
-  position: relative;
-  color: transparent;
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 3px;
 }
 
-.btn-loading::after {
-  content: "";
-  position: absolute;
-  width: 16px;
-  height: 16px;
-  top: 50%;
-  left: 50%;
-  margin-left: -8px;
-  margin-top: -8px;
-  border: 2px solid transparent;
-  border-top-color: currentColor;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
 }
