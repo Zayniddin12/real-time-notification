@@ -44,6 +44,11 @@ export interface RegisterByEmailRequest {
   lastname: string
   deviceId: string
 }
+export interface VerifyByEmailRequest {
+  email: string
+  code: string
+  deviceId: string
+}
 
 export interface RegisterByPhoneRequest {
   phone: string

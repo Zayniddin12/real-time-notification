@@ -10,9 +10,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
 import { apiService } from "@/lib/api"
 import { LogIn, Mail, Phone, Lock, Eye, EyeOff, User } from "lucide-react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 
 export default function LoginPage() {
+  const router = useRouter()
   const [emailFormData, setEmailFormData] = useState({
     email: "",
     password: "",
@@ -73,25 +75,27 @@ export default function LoginPage() {
     try {
       setLoading(true)
       const response = await apiService.login(credentials)
+     
+      
 
       // Store authentication data
-      const token = response.accessToken || response.token
+      const token = response.id|| response.token
       if (token) {
+        console.log(token);
+        
         localStorage.setItem("authToken", token)
-        if (response.refreshToken) {
-          localStorage.setItem("refreshToken", response.refreshToken)
-        }
-        if (response.user) {
-          localStorage.setItem("userId", response.user.id.toString())
-          localStorage.setItem("userRole", response.user.role || "USER")
+      
+        if (response) {
+          localStorage.setItem("userId", response.id.toString())
+          localStorage.setItem("userRole", response.roles[0].name || "USER")
           const userName =
-            response.user.firstname && response.user.lastname
-              ? `${response.user.firstname} ${response.user.lastname}`
-              : response.user.email || response.user.phone || "User"
+            response.firstname && response.lastname
+              ? `${response.firstname} ${response.lastname}`
+              : response.email || response.phone || "User"
           localStorage.setItem("userName", userName)
         }
       }
-
+      console.log('is response',response);
       toast({
         title: "Login Successful",
         description: "Welcome back!",
@@ -100,7 +104,8 @@ export default function LoginPage() {
       // Redirect based on role
       const userRole = response.user?.role || "USER"
       const redirectPath = userRole === "ADMIN" ? "/admin" : "/user"
-      window.location.href = redirectPath
+      
+router.push(redirectPath)
     } catch (error: any) {
       toast({
         title: "Login Failed",

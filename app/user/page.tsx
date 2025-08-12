@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Bell, User, ArrowLeft, Wifi, WifiOff, BellRing, LogOut, Trash2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { websocketService } from "@/lib/websocket"
-import { fcmService } from "@/lib/fcm"
+import { connectNotifications } from "@/lib/websocket"
+import { requestFcmToken, onFcmMessage, saveFcmToken, getSavedFcmToken } from "@/lib/fcm"
 import { apiService } from "@/lib/api"
 import { AuthService } from "@/lib/auth"
 import type { Notification } from "@/types"
@@ -32,6 +32,21 @@ export default function UserPage() {
     }
   }, [])
 
+  // Fallback polling for notifications if WebSocket fails
+  useEffect(() => {
+    if (!connected && userId) {
+      const interval = setInterval(async () => {
+        try {
+          await loadNotifications(Number(userId))
+        } catch (error) {
+          console.error("Polling error:", error)
+        }
+      }, 10000) // Poll every 10 seconds
+
+      return () => clearInterval(interval)
+    }
+  }, [connected, userId])
+
   const initializePage = async () => {
     try {
       // Check authentication
@@ -40,16 +55,21 @@ export default function UserPage() {
       const storedUserId = AuthService.getUserId()
       const storedUserName = AuthService.getUserName()
 
-      if (!storedUserId) {
-        window.location.href = "/auth/login"
-        return
+      // if (!storedUserId) {
+      //   window.location.href = "/auth/login"
+      //   return
+      // }
+
+      if (storedUserId) {
+        setUserId(storedUserId.toString())
+        setUserName(storedUserName || "User")
+        console.log(storedUserId);
+
+        await loadNotifications(storedUserId)
+        await enablePushNotifications()
+        await initializeServices(storedUserId.toString())
       }
 
-      setUserId(storedUserId.toString())
-      setUserName(storedUserName || "User")
-
-      await loadNotifications(storedUserId)
-      await initializeServices(storedUserId.toString())
     } catch (error) {
       // Will redirect automatically if not authenticated
       return
@@ -59,85 +79,108 @@ export default function UserPage() {
   const loadNotifications = async (userId: number) => {
     try {
       const response = await apiService.getNotifications(userId)
-      setNotifications(response.data || [])
+      
+      if (response && Array.isArray(response)) {
+        setNotifications(response)
+      } else if (response && typeof response === 'object' && (response as any).content && Array.isArray((response as any).content)) {
+        setNotifications((response as any).content)
+      } else {
+        setNotifications([])
+      }
     } catch (error) {
       console.error("Error loading notifications:", error)
     }
   }
 
   const initializeServices = async (userId: string) => {
+    console.log('userId', userId);
     const numericUserId = Number.parseInt(userId)
 
+
     // Initialize WebSocket
-    wsRef.current = websocketService.connect(userId, {
-      onConnect: () => {
-        setConnected(true)
-        toast({
-          title: "Connected",
-          description: "Real-time notifications enabled",
-        })
-      },
-      onDisconnect: () => {
-        setConnected(false)
-        toast({
-          title: "Disconnected",
-          description: "Connection lost. Trying to reconnect...",
-          variant: "destructive",
-        })
-      },
-      onMessage: (notification: Notification) => {
+    try {
+      const disconnect = connectNotifications(userId, (notification: any) => {
         setNotifications((prev) => [notification, ...prev])
         toast({
           title: notification.title,
           description: notification.body,
         })
-      },
-      onError: (error) => {
-        console.error("WebSocket error:", error)
-        toast({
-          title: "Connection Error",
-          description: "Failed to connect to notification service",
-          variant: "destructive",
-        })
-      },
-    })
+      })
+      
+      wsRef.current = { disconnect }
+      setConnected(true)
+      toast({
+        title: "Connected",
+        description: "Real-time notifications enabled",
+      })
+    } catch (error) {
+      console.error("WebSocket connection failed:", error)
+      setConnected(false)
+      toast({
+        title: "Connection Failed",
+        description: "WebSocket connection failed. Notifications will not be real-time.",
+        variant: "destructive",
+      })
+    }
 
     // Initialize FCM
     try {
-      await fcmService.initialize()
-      const permission = await fcmService.requestPermission()
-      setPushEnabled(permission === "granted")
-
-      if (permission === "granted") {
-        const token = await fcmService.getToken()
+      let token = getSavedFcmToken()
+      if (!token) {
+        token = await requestFcmToken()
         if (token) {
-          await apiService.setFirebaseToken(token, numericUserId)
-          toast({
-            title: "Push Notifications",
-            description: "Push notifications enabled successfully",
-          })
+          saveFcmToken(token)
+          try {
+            await apiService.setFirebaseToken(token, numericUserId)
+          } catch (apiError) {
+            console.error("Failed to save FCM token to backend:", apiError)
+          }
         }
+      }
+      
+      if (token) {
+        setPushEnabled(true)
+        toast({
+          title: "Push Notifications",
+          description: "Push notifications enabled successfully",
+        })
+        
+        // Listen for FCM messages
+        onFcmMessage((payload) => {
+          const notification: Notification = {
+            id: `fcm-${Date.now()}`,
+            userId: userId,
+            title: payload.notification?.title || "Push Notification",
+            body: payload.notification?.body || "",
+            type: "GENERAL",
+            createdAt: new Date().toISOString(),
+            isRead: false,
+          }
+          setNotifications((prev) => [notification, ...prev])
+        })
+      } else {
+        console.log("FCM token not available - push notifications disabled")
+        setPushEnabled(false)
       }
     } catch (error) {
       console.error("FCM initialization error:", error)
+      setPushEnabled(false)
     }
   }
 
   const enablePushNotifications = async () => {
     try {
       setLoading(true)
-      const permission = await fcmService.requestPermission()
-
-      if (permission === "granted") {
-        const token = await fcmService.getToken()
-        if (token) {
-          await apiService.setFirebaseToken(token, Number.parseInt(userId))
-          setPushEnabled(true)
-          toast({
-            title: "Success",
-            description: "Push notifications enabled!",
-          })
-        }
+      const token = await requestFcmToken()
+      
+      if (token) {
+        saveFcmToken(token)
+        await apiService.setFirebaseToken(token, Number.parseInt(userId))
+        setPushEnabled(true)
+        toast({
+          title: "Success",
+          description: "Push notifications enabled!",
+        })
       } else {
         toast({
           title: "Permission Denied",

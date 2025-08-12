@@ -3,6 +3,7 @@ import type {
   NotificationRequest,
   LoginRequest,
   RegisterByEmailRequest,
+  VerifyByEmailRequest,
   RegisterByPhoneRequest,
   AuthResponse,
 } from "@/types"
@@ -14,7 +15,6 @@ class ApiService {
     const token = localStorage.getItem("authToken")
     return {
       "Content-Type": "application/json",
-      ...(token && { Authorization: `Bearer ${token}` }),
     }
   }
 
@@ -32,6 +32,8 @@ class ApiService {
     if (!response.ok) {
       if (response.status === 401) {
         // Token expired or invalid
+        console.log('expired');
+        
         localStorage.removeItem("authToken")
         localStorage.removeItem("userRole")
         localStorage.removeItem("userId")
@@ -74,6 +76,17 @@ class ApiService {
     })
   }
 
+  async verifyByEmail(userData: VerifyByEmailRequest): Promise<AuthResponse> {
+    return this.request<AuthResponse>("/auth/verify", {
+      method: "POST",
+      body: JSON.stringify({
+        email: userData.email,
+        code: userData.code,
+        deviceId: userData.deviceId || this.generateDeviceId(),
+      }),
+    })
+  }
+
   async registerByPhone(userData: RegisterByPhoneRequest): Promise<AuthResponse> {
     return this.request<AuthResponse>("/auth/registerByPhone", {
       method: "POST",
@@ -84,27 +97,34 @@ class ApiService {
       }),
     })
   }
-
   async login(credentials: LoginRequest): Promise<AuthResponse> {
-    // Try different login endpoints based on what's provided
-    const endpoint = "/auth/login"
+    const endpoint = "/auth/loginByEmail";
     const body: any = {
       password: credentials.password,
-    }
-
+    };
+  
     if (credentials.email) {
-      body.email = credentials.email
+      body.email = credentials.email;
     } else if (credentials.phone) {
-      body.phone = credentials.phone
+      body.phone = credentials.phone;
     } else if (credentials.username) {
-      body.username = credentials.username
+      body.username = credentials.username;
     }
-
-    return this.request<AuthResponse>(endpoint, {
-      method: "POST",
-      body: JSON.stringify(body),
-    })
+  
+    try {
+      const response = await this.request<AuthResponse>(endpoint, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+  
+      console.log("API raw response:", response); // API’dan qaytgan to‘liq javob
+      return response.meta.user;
+    } catch (error) {
+      console.error("Login request failed:", error);
+      throw error;
+    }
   }
+  
 
   async refreshToken(): Promise<{ accessToken: string }> {
     const refreshToken = localStorage.getItem("refreshToken")
@@ -121,6 +141,8 @@ class ApiService {
       })
     } finally {
       // Clear local storage regardless of API response
+      console.log('finally');
+      
       localStorage.removeItem("authToken")
       localStorage.removeItem("refreshToken")
       localStorage.removeItem("userId")
@@ -129,14 +151,14 @@ class ApiService {
     }
   }
 
-  async getCurrentUser(): Promise<User> {
-    return this.request<User>("/auth/me")
-  }
+  // async getCurrentUser(): Promise<User> {
+  //   return this.request<User>("/auth/me")
+  // }
 
   // User Management APIs
   async getAllUsers(): Promise<User[]> {
     const response = await this.request<{ content: User[] }>("/user/getAllUsers")
-    return response.content || []
+    return response.meta.list || []
   }
 
   async getUserById(id: number): Promise<User> {
@@ -163,16 +185,16 @@ class ApiService {
       body: JSON.stringify({
         title: notification.title,
         body: notification.body,
-        userId: Number.parseInt(notification.userId),
+        userId: notification.userId,
         type: notification.type || "GENERAL",
       }),
     })
   }
 
   async getNotifications(userId?: number): Promise<any[]> {
-    const endpoint = userId ? `/notifications/user/${userId}` : "/notifications"
+    const endpoint = userId ? `/notification/getAllNotifications/${userId}` : "/notifications"
     const response = await this.request<{ content: any[] }>(endpoint)
-    return response.content || []
+    return response || []
   }
 
   async markNotificationAsRead(notificationId: string): Promise<void> {
@@ -233,6 +255,12 @@ class ApiService {
       body: JSON.stringify({
         amount: bidAmount,
       }),
+    })
+  }
+
+  async getCurrentUser(id: number | string): Promise<any> {
+    return this.request<any>(`/user/getUserById?id=${id}`, {
+      method: "GET",
     })
   }
 

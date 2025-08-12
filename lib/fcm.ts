@@ -1,6 +1,9 @@
-import { initializeApp } from "firebase/app"
-import { getMessaging, getToken, onMessage, isSupported } from "firebase/messaging"
+// lib/fcm.ts
 
+import { initializeApp } from "firebase/app"
+import { getMessaging, getToken, onMessage, type MessagePayload } from "firebase/messaging"
+
+// Firebase config
 const firebaseConfig = {
   apiKey: "AIzaSyBRfSRHUszwxuoQuDNfWgpakrMS6IWOmMA",
   authDomain: "auction-e9696.firebaseapp.com",
@@ -11,82 +14,43 @@ const firebaseConfig = {
   measurementId: "G-F45ME0EVE6",
 }
 
-const VAPID_KEY = "BND5ym5-wvp3EIYvvOpdiDxDle9Wbp3mZhlqZvEwjSSxIPzWZ-MIFN61skPhmUVTRHkBjfBj7AkahbYDDNP9arU"
+// Initialize Firebase app
+const app = initializeApp(firebaseConfig)
+const messaging = getMessaging(app)
 
-class FCMService {
-  private app: any = null
-  private messaging: any = null
-  private initialized = false
-
-  async initialize() {
-    if (this.initialized) return
-
-    try {
-      // Check if Firebase messaging is supported
-      const supported = await isSupported()
-      if (!supported) {
-        console.warn("Firebase messaging is not supported in this browser")
-        return
-      }
-
-      this.app = initializeApp(firebaseConfig)
-      this.messaging = getMessaging(this.app)
-      this.initialized = true
-
-      // Listen for foreground messages
-      onMessage(this.messaging, (payload) => {
-        console.log("Foreground message received:", payload)
-
-        // Show notification if permission is granted
-        if (Notification.permission === "granted") {
-          new Notification(payload.notification?.title || "New Notification", {
-            body: payload.notification?.body || "",
-            icon: "/favicon.ico",
-          })
-        }
-      })
-    } catch (error) {
-      console.error("FCM initialization error:", error)
-    }
-  }
-
-  async requestPermission(): Promise<NotificationPermission> {
-    if (!("Notification" in window)) {
-      console.warn("This browser does not support notifications")
-      return "denied"
-    }
-
-    if (Notification.permission === "granted") {
-      return "granted"
-    }
-
-    if (Notification.permission === "denied") {
-      return "denied"
-    }
-
+/**
+ * Permission so‘raydi va FCM token qaytaradi
+ */
+export async function requestFcmToken(): Promise<string | null> {
+  try {
     const permission = await Notification.requestPermission()
-    return permission
-  }
+    if (permission !== "granted") return null
 
-  async getToken(): Promise<string | null> {
-    if (!this.messaging) {
-      await this.initialize()
-    }
+    const token = await getToken(messaging, {
+      vapidKey: 'BND5ym5-wvp3EIYvvOpdiDxDle9Wbp3mZhlqZvEwjSSxIPzWZ-MIFN61skPhmUVTRHkBjfBj7AkahbYDDNP9arU' as string,
+    })
 
-    if (!this.messaging) {
-      return null
-    }
-
-    try {
-      const token = await getToken(this.messaging, {
-        vapidKey: VAPID_KEY,
-      })
-      return token
-    } catch (error) {
-      console.error("Error getting FCM token:", error)
-      return null
-    }
+    return token ?? null
+  } catch (err) {
+    console.error("Error getting FCM token:", err)
+    return null
   }
 }
 
-export const fcmService = new FCMService()
+/**
+ * Xabar kelganda callback ishlaydi
+ */
+export function onFcmMessage(cb: (p: MessagePayload) => void) {
+  return onMessage(messaging, cb)
+}
+
+/**
+ * Tokenni localStorage’ga saqlash va olish funksiyasi
+ */
+export function saveFcmToken(token: string) {
+  localStorage.setItem("fcm_token", token)
+}
+
+export function getSavedFcmToken(): string | null {
+  return localStorage.getItem("fcm_token")
+}

@@ -27,14 +27,14 @@ export class AuthService {
   }
 
   static async requireAuth(): Promise<void> {
-    if (!this.isAuthenticated()) {
-      window.location.href = "/auth/login"
-      throw new Error("Authentication required")
-    }
-
+    // if (!this.isAuthenticated()) {
+    //   window.location.href = "/auth/login"
+    //   throw new Error("Authentication required")
+    // }
+    const userId = localStorage.getItem("userId")
     try {
       // Verify token is still valid
-      await apiService.getCurrentUser()
+      await apiService.getCurrentUser(userId)
     } catch (error) {
       // Try to refresh token
       try {
@@ -50,7 +50,7 @@ export class AuthService {
 
       // Token is invalid and refresh failed, redirect to login
       this.logout()
-      window.location.href = "/auth/login"
+      // window.location.href = "/auth/login"
       throw new Error("Authentication expired")
     }
   }
@@ -66,10 +66,12 @@ export class AuthService {
   }
 
   static logout(): void {
-    localStorage.removeItem("authToken")
-    localStorage.removeItem("refreshToken")
-    localStorage.removeItem("userId")
-    localStorage.removeItem("userRole")
-    localStorage.removeItem("userName")
+    console.log('logout');
+    
+    // localStorage.removeItem("authToken")
+    // localStorage.removeItem("refreshToken")
+    // localStorage.removeItem("userId")
+    // localStorage.removeItem("userRole")
+    // localStorage.removeItem("userName")
   }
 }
